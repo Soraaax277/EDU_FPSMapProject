@@ -1,20 +1,10 @@
 using UnityEngine;
 using System.Collections.Generic;
-
-/// <summary>
-/// Handles capture-point logic:
-///  - Tracks INDIVIDUAL occupants (not just team names) so OnTriggerExit
-///    is always authoritative — no OverlapBox re-check race condition.
-///  - One team inside → 10-second countdown. Step out → resets to Neutral.
-///  - Both teams inside → CONTESTED (countdown paused).
-///  - Countdown reaches 0 → captured, fires OnCaptured event.
-/// </summary>
 public class CapturePoint : MonoBehaviour
 {
     [Header("Capture Settings")]
     public float captureTime = 10f;
 
-    // ── Read-only state ───────────────────────────────────────────
     public string controllingTeam  { get; private set; } = "None";
     public float  captureCountdown { get; private set; } = 10f;
     public bool   isContested      { get; private set; }
@@ -22,21 +12,16 @@ public class CapturePoint : MonoBehaviour
     public string capturingTeam    { get; private set; } = "";
     public bool   justCaptured     { get; private set; }
 
-    // ── Events ────────────────────────────────────────────────────
     public System.Action<string>        OnCaptured;
     public System.Action                OnContested;
     public System.Action<string, float> OnCountdownTick;
 
-    // ── Private ───────────────────────────────────────────────────
-    // Track individual occupants — derive teams from this set each frame.
-    // This avoids the OverlapBox race condition in OnTriggerExit.
     private readonly HashSet<GameObject> _occupants = new HashSet<GameObject>();
 
     private Renderer _rend;
     private bool     _lastContested;
-    private bool     _alreadyCaptured;  // guard: don't fire OnCaptured twice per capture
+    private bool     _alreadyCaptured;  
 
-    // ─────────────────────────────────────────────────────────────
     void Start()
     {
         _rend            = GetComponent<Renderer>();
@@ -47,10 +32,8 @@ public class CapturePoint : MonoBehaviour
     {
         justCaptured = false;
 
-        // Prune any occupants whose GameObjects were deactivated (killed)
         _occupants.RemoveWhere(go => go == null || !go.activeInHierarchy);
 
-        // Derive team presence from current occupant set
         bool greenIn = false, redIn = false;
         foreach (var go in _occupants)
         {
@@ -64,7 +47,6 @@ public class CapturePoint : MonoBehaviour
 
         if (isContested)
         {
-            // Both teams inside — freeze progress
             captureCountdown = captureTime;
             capturingTeam    = "";
             _alreadyCaptured = false;
@@ -77,7 +59,6 @@ public class CapturePoint : MonoBehaviour
 
             if (controllingTeam == capturingTeam)
             {
-                // Owning team on their own point — stay at full
                 captureCountdown = captureTime;
             }
             else
@@ -95,7 +76,6 @@ public class CapturePoint : MonoBehaviour
         }
         else
         {
-            // ── NOBODY INSIDE → reset countdown, show Neutral ────
             captureCountdown = captureTime;
             capturingTeam    = "";
             _alreadyCaptured = false;
@@ -104,7 +84,6 @@ public class CapturePoint : MonoBehaviour
         _lastContested = isContested;
     }
 
-    // ─────────────────────────────────────────────────────────────
     private void CaptureBy(string team)
     {
         controllingTeam  = team;
@@ -120,7 +99,6 @@ public class CapturePoint : MonoBehaviour
         OnCaptured?.Invoke(team);
     }
 
-    // ── Trigger detection — tracks individual objects ─────────────
     private void OnTriggerEnter(Collider other)
     {
         if (GetTeamFrom(other.gameObject) == null) return;
@@ -135,7 +113,6 @@ public class CapturePoint : MonoBehaviour
             Debug.Log($"[CapturePoint] {other.name} exited. Occupants: {_occupants.Count}");
     }
 
-    // ── Round reset ──────────────────────────────────────────────
     public void ResetZone()
     {
         _occupants.Clear();
@@ -152,7 +129,6 @@ public class CapturePoint : MonoBehaviour
         Debug.Log("[CapturePoint] Zone reset for new round.");
     }
 
-    // ── Helpers ───────────────────────────────────────────────────
     private static string GetTeamFrom(GameObject go)
     {
         PlayerCharacter pc = go.GetComponent<PlayerCharacter>();
@@ -163,7 +139,5 @@ public class CapturePoint : MonoBehaviour
 
         return null;
     }
-
-    // Overload for Collider convenience
     private static string GetTeamFrom(Collider c) => GetTeamFrom(c.gameObject);
 }

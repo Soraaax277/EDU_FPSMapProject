@@ -2,9 +2,6 @@ using UnityEngine;
 using UnityEngine.AI;
 using System.Collections.Generic;
 
-// ════════════════════════════════════════════════════════════════
-//  ROUND MANAGER — top-level match controller
-// ════════════════════════════════════════════════════════════════
 public class RoundManager : MonoBehaviour
 {
     public static RoundManager Instance;
@@ -12,7 +9,7 @@ public class RoundManager : MonoBehaviour
     private readonly List<BaseCharacter> allCharacters = new List<BaseCharacter>();
     private bool  roundEnding   = false;
     private float lastScanTime  = 0f;
-    private float roundStartTime = 0f;          // grace period before checking wins
+    private float roundStartTime = 0f;         
 
     void Awake()  { Instance = this; }
 
@@ -29,7 +26,6 @@ public class RoundManager : MonoBehaviour
 
     void Update()
     {
-        // Safety scan every 2 s to catch late-spawns
         if (Time.time > lastScanTime + 2f)
         {
             SafetyScan();
@@ -37,19 +33,17 @@ public class RoundManager : MonoBehaviour
         }
 
         if (roundEnding) return;
-        if (Time.time < roundStartTime + 3f) return;   // 3-second grace period
+        if (Time.time < roundStartTime + 3f) return;  
 
         CheckRoundStatus();
     }
 
-    // ── Registration scan ────────────────────────────────────────
     void SafetyScan()
     {
         foreach (var bc in FindObjectsOfType<BaseCharacter>(true))
             RegisterCharacter(bc);
     }
 
-    // ── Win condition: wipe ──────────────────────────────────────
     void CheckRoundStatus()
     {
         if (allCharacters.Count == 0) return;
@@ -83,7 +77,6 @@ public class RoundManager : MonoBehaviour
         else if (redWiped   && !greenWiped) WinRound("Green");
     }
 
-    // ── Declare winner ───────────────────────────────────────────
     public void WinRound(string winningTeam)
     {
         if (roundEnding) return;
@@ -97,14 +90,11 @@ public class RoundManager : MonoBehaviour
         Invoke(nameof(ResetRound), 5f);
     }
 
-    // ── Reset all characters for next round ──────────────────────
     public void ResetRound()
     {
         if (CapturePointUI.Instance != null)
             CapturePointUI.Instance.ResetWinScreen();
 
-        // Clear stale capture zone state (OnTriggerExit never fires for
-        // SetActive(false) objects, so we must flush it manually)
         CapturePoint cp = FindObjectOfType<CapturePoint>();
         if (cp != null) cp.ResetZone();
 
@@ -117,7 +107,6 @@ public class RoundManager : MonoBehaviour
         Debug.Log("[RoundManager] ─── NEW ROUND START ───");
     }
 
-    // ── Helper for AI ────────────────────────────────────────────
     public Transform GetLivingTeammate(string teamToFind)
     {
         string lower = teamToFind.Trim().ToLower();
@@ -128,11 +117,6 @@ public class RoundManager : MonoBehaviour
         return null;
     }
 }
-
-// ════════════════════════════════════════════════════════════════
-//  BASE CHARACTER — shared by Player and all AI
-//  Lives in RoundManager.cs so it compiles in one unit.
-// ════════════════════════════════════════════════════════════════
 public class BaseCharacter : MonoBehaviour
 {
     public string team;
