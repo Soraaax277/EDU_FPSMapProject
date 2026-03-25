@@ -116,6 +116,54 @@ public class MapAutoGenerator : EditorWindow
         return sum / max;
     }
 
+    private static T SaveAsset<T>(T asset, string folder, string name) where T : UnityEngine.Object
+    {
+        string basePath = "Assets/GeneratedMapAssets";
+        if (!AssetDatabase.IsValidFolder(basePath)) AssetDatabase.CreateFolder("Assets", "GeneratedMapAssets");
+            
+        string folderPath = basePath + "/" + folder;
+        if (!AssetDatabase.IsValidFolder(folderPath)) AssetDatabase.CreateFolder(basePath, folder);
+
+        if (asset is Texture2D tex)
+        {
+            string pngPath = folderPath + "/" + name + ".png";
+            System.IO.File.WriteAllBytes(pngPath, tex.EncodeToPNG());
+            AssetDatabase.ImportAsset(pngPath, ImportAssetOptions.ForceUpdate);
+            
+            TextureImporter importer = AssetImporter.GetAtPath(pngPath) as TextureImporter;
+            if (importer != null)
+            {
+                importer.isReadable = true;
+                importer.filterMode = FilterMode.Bilinear;
+                importer.wrapMode = name.Contains("Wall") ? TextureWrapMode.Repeat : TextureWrapMode.Clamp;
+                importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<T>(pngPath);
+        }
+
+        string fullPath = folderPath + "/" + name + ".asset";
+        
+        T existing = AssetDatabase.LoadAssetAtPath<T>(fullPath);
+        if (existing != null)
+        {
+            if (asset is Mesh m && existing is Mesh em)
+            {
+                em.Clear(); em.vertices = m.vertices; em.uv = m.uv; em.triangles = m.triangles;
+                em.RecalculateNormals(); em.RecalculateBounds();
+                return existing as T;
+            }
+            if (asset is Material mat && existing is Material emat)
+            {
+                emat.CopyPropertiesFromMaterial(mat);
+                return existing as T;
+            }
+            AssetDatabase.DeleteAsset(fullPath); 
+        }
+
+        AssetDatabase.CreateAsset(asset, fullPath);
+        return asset;
+    }
+
     private static Texture2D GenerateFloorTexture(int res, float craterSeedX, float craterSeedZ)
     {
         Texture2D tex = new Texture2D(res, res, TextureFormat.RGB24, true);
@@ -240,6 +288,13 @@ public class MapAutoGenerator : EditorWindow
         if (root != null) DestroyImmediate(root);
         root = new GameObject("Map_TheConduit");
 
+        if (AssetDatabase.IsValidFolder("Assets/GeneratedMapAssets"))
+            AssetDatabase.DeleteAsset("Assets/GeneratedMapAssets");
+        AssetDatabase.CreateFolder("Assets", "GeneratedMapAssets");
+        AssetDatabase.CreateFolder("Assets/GeneratedMapAssets", "Textures");
+        AssetDatabase.CreateFolder("Assets/GeneratedMapAssets", "Materials");
+        AssetDatabase.CreateFolder("Assets/GeneratedMapAssets", "Meshes");
+
         root.AddComponent<RoundManager>();
         NavMeshSurface nav = root.AddComponent<NavMeshSurface>();
         nav.collectObjects = CollectObjects.Children;
@@ -247,18 +302,20 @@ public class MapAutoGenerator : EditorWindow
         float craterSeedX = Random.value * 100f;
         float craterSeedZ = Random.value * 100f;
 
-        Texture2D wallTex  = GenerateWallTexture(512);
-        Texture2D floorTex = GenerateFloorTexture(2048, craterSeedX, craterSeedZ);
+        Texture2D wallTex  = SaveAsset(GenerateWallTexture(512), "Textures", "WallTex");
+        Texture2D floorTex = SaveAsset(GenerateFloorTexture(2048, craterSeedX, craterSeedZ), "Textures", "FloorTex");
 
         Shader s = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
 
         Material wallM  = new Material(s);
         wallM.color     = new Color(0.85f, 0.85f, 0.88f);  
         ApplyTexture(wallM, wallTex, new Vector2(3f, 2f)); 
+        wallM = SaveAsset(wallM, "Materials", "WallMaterial");
 
         Material floorM = new Material(s);
         floorM.color    = Color.white;
         ApplyTexture(floorM, floorTex, new Vector2(1f, 1f)); 
+        floorM = SaveAsset(floorM, "Materials", "FloorMaterial");
 
 
         SetupAtmosphere(root.transform);
@@ -338,6 +395,7 @@ public class MapAutoGenerator : EditorWindow
         CreateFullChar("Enemy_5",    new Vector3( 240,1,-55), "Red",   false, root.transform, bul, s, null);
 
         nav.BuildNavMesh();
+        if (nav.navMeshData != null) nav.navMeshData = SaveAsset(nav.navMeshData, "Meshes", "Baked_NavMeshData");
 
         GameObject overviewGO = new GameObject("Overview_Camera");
         overviewGO.transform.SetParent(root.transform);
@@ -370,14 +428,14 @@ public class MapAutoGenerator : EditorWindow
 
         Material m = new Material(s);
         m.color = t == "Green" ? Color.green : Color.red;
-        c.GetComponent<Renderer>().sharedMaterial = m;
+        c.GetComponent<Renderer>().sharedMaterial = SaveAsset(m, "Materials", $"CharMat_{t}_{n}");
 
         GameObject gun = GameObject.CreatePrimitive(PrimitiveType.Cube);
         gun.transform.SetParent(c.transform);
         gun.transform.localPosition = new Vector3(0.5f, 0.4f, 0.7f);
         gun.transform.localScale    = new Vector3(0.3f, 0.3f, 1.2f);
         Material gm = new Material(s); gm.color = Color.black;
-        gun.GetComponent<Renderer>().sharedMaterial = gm;
+        gun.GetComponent<Renderer>().sharedMaterial = SaveAsset(gm, "Materials", $"GunMat_{t}_{n}");
 
         Collider gunCol = gun.GetComponent<Collider>();
         if (gunCol != null) Object.DestroyImmediate(gunCol);
@@ -453,7 +511,7 @@ public class MapAutoGenerator : EditorWindow
         GameObject b = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         b.name = "Bullet_Prefab"; b.transform.localScale = Vector3.one * 0.3f;
         Material m = new Material(s); m.color = Color.yellow;
-        b.GetComponent<Renderer>().sharedMaterial = m;
+        b.GetComponent<Renderer>().sharedMaterial = SaveAsset(m, "Materials", "BulletMat");
         b.GetComponent<Collider>().isTrigger = true;
         b.AddComponent<Bullet>();
         b.transform.SetParent(r);
@@ -473,7 +531,7 @@ public class MapAutoGenerator : EditorWindow
             sky.SetColor("_SkyTint",   new Color(0.04f, 0.06f, 0.14f));  
             sky.SetColor("_GroundColor",new Color(0.09f, 0.08f, 0.07f)); 
             sky.SetFloat("_Exposure",  0.65f);
-            RenderSettings.skybox = sky;
+            RenderSettings.skybox = SaveAsset(sky, "Materials", "Skybox_Procedural");
             DynamicGI.UpdateEnvironment();
         }
 
@@ -647,6 +705,7 @@ public class MapAutoGenerator : EditorWindow
         mesh.triangles = triangles;
         mesh.uv = uvs;
         mesh.RecalculateNormals();
+        mesh = SaveAsset(mesh, "Meshes", "GroundCrateredMesh");
 
         MeshFilter mf = go.AddComponent<MeshFilter>();
         mf.sharedMesh = mesh;
@@ -735,9 +794,16 @@ public class MapAutoGenerator : EditorWindow
             mesh.ToMesh();
             mesh.Refresh();
 
+            // Strip ProBuilder and Serialize Mesh to disk!
+            MeshFilter mf = go.GetComponent<MeshFilter>();
+            Mesh cleanMesh = SaveAsset(mf.sharedMesh, "Meshes", "Wall_" + System.Guid.NewGuid().ToString().Substring(0, 8));
+            mf.sharedMesh = cleanMesh;
+            Object.DestroyImmediate(mesh);
+
             go.GetComponent<Renderer>().sharedMaterial = mat;
 
-            go.AddComponent<MeshCollider>();
+            MeshCollider mc = go.AddComponent<MeshCollider>();
+            mc.sharedMesh = cleanMesh;
         }
         else
         {
